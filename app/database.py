@@ -2,13 +2,10 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# 1. Read data directory from environment variable, fallback to "/data" (or "." for local development)
-DATA_DIR = os.getenv("DATA_DIR", "/data")
-
-# 2. Ensure the directory exists inside the container
+# Default to current working directory "." for local dev & CI tests
+DATA_DIR = os.getenv("DATA_DIR", ".")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 3. Form the full SQLite path: /data/app.db
 DB_FILE_PATH = os.path.join(DATA_DIR, "app.db")
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_FILE_PATH}"
 
