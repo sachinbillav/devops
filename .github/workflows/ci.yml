@@ -60,13 +60,10 @@ jobs:
           REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build the Docker image
           docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -t $REGISTRY/$REPOSITORY:latest .
-
-          # Push both commit SHA and latest tags
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
           docker push $REGISTRY/$REPOSITORY:latest
-          
+
   deploy-ec2:
     needs: build-and-push-ecr
     runs-on: ubuntu-latest
@@ -75,32 +72,39 @@ jobs:
     steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          EC2_USER: ${{ secrets.EC2_USER }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: AWS_REGION,ECR_REPOSITORY
+          envs: AWS_REGION,ECR_REPOSITORY,EC2_USER
           script: |
             # 1. Log in to Amazon ECR
             AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-            REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $REGISTRY
-            
+            REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin $REGISTRY
+
             # 2. Pull latest container image
-            IMAGE_URI="${REGISTRY}/${{ secrets.ECR_REPOSITORY }}:latest"
+            IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:latest"
             docker pull $IMAGE_URI
-            
-            # 3. Stop and remove existing container (if running)
-            docker stop fastapi-app || true
-            docker rm fastapi-app || true
-            
-            # 4. Run new container with persistent SQLite volume
+
+            # 3. Force stop and remove existing container
+            docker rm -f fastapi-app || true
+
+            # 4. Ensure host SQLite directory exists
+            mkdir -p /home/${EC2_USER}/sqlite_data
+
+            # 5. Run container mounting only to /data (never to /workspace)
             docker run -d \
               --name fastapi-app \
               --restart unless-stopped \
               -p 8000:8000 \
-              -v /home/${{ secrets.EC2_USER }}/app_data:/workspace \
+              -e DATA_DIR=/data \
+              -v /home/${EC2_USER}/sqlite_data:/data \
               $IMAGE_URI
-            
-            # 5. Clean up unused old images
+
+            # 6. Clean up dangling images
             docker image prune -f
