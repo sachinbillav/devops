@@ -61,7 +61,7 @@ def test_create_and_read_item():
     assert data["title"] == payload["title"]
     item_id = data["id"]
 
-    # Read item
+    # Read items
     get_res = client.get(f"/api/v1/items/{item_id}")
     assert get_res.status_code == 200
     assert get_res.json()["title"] == payload["title"]
