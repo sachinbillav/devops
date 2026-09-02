@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -31,6 +32,8 @@ jobs:
           flake8 . --exclude=.venv,venv,__pycache__ --count --select=E9,F63,F7,F82 --show-source --statistics
 
       - name: Run automated tests
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
         run: |
           pytest -v
 
@@ -75,12 +78,12 @@ jobs:
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-          EC2_USER: ${{ secrets.EC2_USER }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: AWS_REGION,ECR_REPOSITORY,EC2_USER
+          envs: AWS_REGION,ECR_REPOSITORY,DATABASE_URL
           script: |
             # 1. Log in to Amazon ECR
             AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -91,20 +94,16 @@ jobs:
             IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:latest"
             docker pull $IMAGE_URI
 
-            # 3. Force stop and remove existing container
+            # 3. Stop and remove existing container
             docker rm -f fastapi-app || true
 
-            # 4. Ensure host SQLite directory exists
-            mkdir -p /home/${EC2_USER}/sqlite_data
-
-            # 5. Run container mounting only to /data (never to /workspace)
+            # 4. Run container connected directly to AWS RDS (stateless, no local volumes)
             docker run -d \
               --name fastapi-app \
               --restart unless-stopped \
               -p 8000:8000 \
-              -e DATA_DIR=/data \
-              -v /home/${EC2_USER}/sqlite_data:/data \
+              -e DATABASE_URL="$DATABASE_URL" \
               $IMAGE_URI
 
-            # 6. Clean up dangling images
+            # 5. Clean up unused images
             docker image prune -f
