@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FastAPI Item Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 40px 16px;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+    }
+
+    header {
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      color: var(--accent);
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+
+    button.btn-primary {
+      padding: 10px 16px;
+      background-color: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button.btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .list-title {
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+      color: var(--muted);
+    }
+
+    .items-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .item-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .item-info h3 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .item-info p {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .btn-delete {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-delete:hover {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--muted);
+      padding: 24px 0;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Task & Item Manager</h1>
+      <p>Powered by FastAPI + Vanilla JS</p>
+    </header>
+
+    <div class="card">
+      <form id="itemForm">
+        <input type="text" id="titleInput" placeholder="Item Title..." required />
+        <textarea id="descInput" rows="2" placeholder="Item Description (optional)..."></textarea>
+        <button type="submit" class="btn-primary">Add Item</button>
+      </form>
+    </div>
+
+    <div class="list-title">Active Items</div>
+    <div class="items-list" id="itemsContainer">
+      <div class="empty-state">Loading items...</div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = '/api/v1/items';
+
+    // Fetch and render items
+    async function loadItems() {
+      const container = document.getElementById('itemsContainer');
+      try {
+        const res = await fetch(API_URL);
+        const items = await res.json();
+
+        if (items.length === 0) {
+          container.innerHTML = '<div class="empty-state">No items found. Create one above!</div>';
+          return;
+        }
+
+        container.innerHTML = items.map(item => `
+          <div class="item-card">
+            <div class="item-info">
+              <h3>${escapeHtml(item.title)}</h3>
+              <p>${item.description ? escapeHtml(item.description) : '<em>No description</em>'}</p>
+            </div>
+            <button class="btn-delete" onclick="deleteItem(${item.id})">Delete</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = '<div class="empty-state" style="color: #ef4444;">Failed to load items.</div>';
+      }
+    }
+
+    // Submit new item
+    document.getElementById('itemForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('titleInput').value.trim();
+      const description = document.getElementById('descInput').value.trim();
+
+      if (!title) return;
+
+      await fetch(API_URL + '/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, completed: false })
+      });
+
+      document.getElementById('itemForm').reset();
+      loadItems();
+    });
+
+    // Delete item
+    async function deleteItem(id) {
+      await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+      loadItems();
+    }
+
+    // Basic XSS escaping
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, match => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[match]));
+    }
+
+    // Initial load
+    loadItems();
+  </script>
+</body>
+</html>
